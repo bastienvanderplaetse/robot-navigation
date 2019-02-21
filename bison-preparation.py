@@ -18,6 +18,9 @@ except ImportError:
     from urllib import urlretrieve
     from urllib2 import urlopen
 
+from socket import error as SocketError
+import errno
+
 ANNOTATIONS_DIRECTORY = "annotations"
 DATA_TYPE = "val2014"
 
@@ -148,10 +151,20 @@ def download_annotations():
 
 def download_image(id, coco):
     img_url = coco.loadImgs(id)[0]['coco_url']
-    urlretrieve(img_url, IMAGE_FILE.format(id))
+    if not exh.file_exists(IMAGE_FILE.format(id)):
+        while True:
+            try:
+                urlretrieve(img_url, IMAGE_FILE.format(id))
+                break
+            except SocketError as e: # Avoid ConnectionResetError: [Errno 104] Connection reset by peer
+                if e.errno != errno.ECONNRESET:
+                    raise # Not error we are looking for
+                pass # Handle error here.
 
 def encode_image(id, image_factory):
     img = PIL_Image.open(IMAGE_FILE.format(id))
+    if img.mode != 'RGB':
+        img = img.convert(mode='RGB')
     features = np.array(image_factory.get_features(img)).squeeze()
     return features
 
@@ -188,7 +201,7 @@ def convert_data():
 
         data.append(np.array(data_row))
         counter = counter + 1
-        
+
     print(s)
 
     display.display_ok("Bison dataset converted")
