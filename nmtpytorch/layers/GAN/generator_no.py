@@ -8,7 +8,7 @@ from .. import FF
 from .rnn import RNN
 import numpy as np
 
-class Generator(RNN):
+class Generator_no(RNN):
     """A decoder which implements Show-attend-and-tell decoder."""
     def __init__(self, input_size, hidden_size, ctx_size_dict, ctx_name, n_vocab,
                  rnn_type, emb, tied_emb=False, dec_init='zero', dropout=0,
@@ -28,8 +28,8 @@ class Generator(RNN):
         self.emb_gradscale = emb_gradscale
         self.ctx_size_dict = ctx_size_dict
         self.bos_type = bos_type
-        self.z = torch.distributions.normal.Normal(torch.tensor([0.0]), torch.tensor([1.0]))
 
+        self.m = torch.distributions.normal.Normal(torch.tensor([0.0]), torch.tensor([1.0]))
 
         # Create target embeddings
         self.emb = emb
@@ -65,10 +65,10 @@ class Generator(RNN):
         h1 = get_rnn_hidden_state(h1_c1)
 
         # ct = self.att(ctx_dict[self.ctx_name][0])
-
+        #
         # h1_ct = torch.mul(h1,ct)
-
-        # Run second decoder (h1 is compatible now as it was returned by GRU)
+        #
+        # # Run second decoder (h1 is compatible now as it was returned by GRU)
         # h2_c2 = self.dec1(h1_ct.squeeze(0), h1_c1)
         # h2 = get_rnn_hidden_state(h2_c2)
 
@@ -96,24 +96,18 @@ class Generator(RNN):
             import sys
             sys.exit("non aligned input warning")
 
-        sentence = y[1:-1]
-        bos = y[:1]
-        eos = y[-1:]
 
-        # z = Variable(torch.cuda.FloatTensor(np.random.normal(0, 1, (sentence.shape[0], sentence.shape[1],self.n_vocab))))
-        z = self.z.rsample(torch.Size([sentence.shape[0], sentence.shape[1],self.n_vocab])).squeeze(-1).to(y.device)
+        z = self.m.rsample(torch.Size([y.shape[0], y.shape[1],self.n_vocab])).squeeze(-1).to(y.device)
+        # z = Variable(torch.cuda.FloatTensor(np.random.normal(0, 1, (y.shape[0], y.shape[1],self.n_vocab))))
 
-        subsentence_noise = torch.matmul(z, self.emb.weight)
-
-        y = torch.cat((self.emb(bos), subsentence_noise, self.emb(eos)), dim=0)
+        y = torch.matmul(z, self.emb.weight)
 
         # Convert token indices to embeddings -> T*B*E
         # y_emb = self.emb(y)
-
+        # y = self.do(y_emb)
         # Get initial hidden state
         h = self.f_init(ctx_dict)
         for t in range(y.shape[0]):
             prob, h = self.f_next(ctx_dict, y[t], h)
             probs[t] = prob.data
-        probs = probs[1:-1]
         return probs

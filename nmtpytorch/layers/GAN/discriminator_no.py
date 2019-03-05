@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 import torch
 from torch import nn
-
+import torch.nn.functional as F
 
 from ...utils.nn import get_rnn_hidden_state
 from .. import FF
 from .rnn import RNN
 
 
-class Discriminator(RNN):
+class Discriminator_no(RNN):
     """A decoder which implements Show-attend-and-tell decoder."""
     def __init__(self, input_size, hidden_size, ctx_size_dict, ctx_name, n_vocab,
                  rnn_type, emb, tied_emb=False, dec_init='zero', dropout=0,
@@ -58,7 +58,7 @@ class Discriminator(RNN):
         h1 = get_rnn_hidden_state(h1_c1)
 
         # h1_ct = torch.mul(h1,self.att(ctx_dict[self.ctx_name][0]))
-
+        #
         # h2_c2 = self.dec1(h1_ct.squeeze(0), h1_c1)
 
 
@@ -71,9 +71,6 @@ class Discriminator(RNN):
             y_emb = self.emb(y)
         else:
             y_emb = torch.matmul(y,self.emb.weight)
-            bos = self.emb(torch.ones(y.shape[1], device=y.device).long()) # batch of one's
-            eos = self.emb(torch.ones(y.shape[1], device=y.device).long()*2) #batch of two's
-            y_emb = torch.cat((bos.unsqueeze(0) ,y_emb, eos.unsqueeze(0)), dim=0)
 
         # Get initial hidden state
         h = self.f_init(ctx_dict)

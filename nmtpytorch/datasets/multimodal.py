@@ -84,7 +84,6 @@ class MultimodalDataset(Dataset):
 
         # Get collator
         self.collate_fn = get_collate(self.keys)
-
         if self.bucket_by is not None and self.bucket_by in self.datasets:
             if self.sampler_type == 'approximate':
                 gen_sampler = ApproximateBucketBatchSampler

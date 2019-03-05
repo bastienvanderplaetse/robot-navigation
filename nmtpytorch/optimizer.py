@@ -61,6 +61,10 @@ class Optimizer:
             self.optim_args['momentum'] = self.momentum
             self.optim_args['nesterov'] = self.nesterov
 
+        if self.name == 'adam':
+            self.betas = (0.5, 0.999)
+            self.optim_args['betas'] = self.betas
+
         # Get all parameters that require grads
         self.named_params = self.get_params(self.model)
 
@@ -140,6 +144,9 @@ class Optimizer:
         if self.name == 'sgd':
             repr_ += ', momentum: {}, nesterov: {}'.format(
                 self.momentum, self.nesterov)
+        if self.name == 'adam':
+            repr_ += ', betas: {}'.format(
+                self.betas)
         if self.lr_decay:
             repr_ += ', lr_decay: (patience={}, factor={})'.format(
                 self.lr_decay_patience, self.lr_decay_factor)
