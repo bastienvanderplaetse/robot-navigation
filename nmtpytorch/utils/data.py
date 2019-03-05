@@ -56,9 +56,19 @@ def pad_video_sequence(seqs):
 
 def onehot_data(idxs, n_classes):
     """Returns a binary batch_size x n_classes one-hot tensor."""
-    out = torch.zeros(len(idxs), n_classes)
+    out = torch.zeros(len(idxs), n_classes, device=idxs.device)
     for row, indices in zip(out, idxs):
         row.scatter_(0, indices, 1)
+    return out
+
+def onehot_batch_data(idxs, n_classes):
+    """Returns a binary batch_size x n_classes one-hot tensor."""
+    out = torch.zeros(
+        idxs.shape[0], idxs.shape[1], n_classes, device=idxs.device)
+
+    for i, id in zip(out, idxs):
+        for j, indices in zip(i, id):
+            j.scatter_(0, indices, 1)
     return out
 
 

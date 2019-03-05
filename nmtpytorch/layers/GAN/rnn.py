@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from .. import FF
 from collections import defaultdict
+from .GRUCell import GRUCell
 
 class RNN(nn.Module):
     def __init__(self, rnn_type, dec_init):
@@ -18,9 +19,8 @@ class RNN(nn.Module):
         assert dec_init in ('zero', 'mean_ctx'), \
             "dec_init '{}' not known".format(dec_init)
 
-        self.RNN = getattr(nn, '{}Cell'.format(self.rnn_type))
-        # LSTMs have also the cell state
-        self.n_states = 1 if self.rnn_type == 'GRU' else 2
+        self.RNN = GRUCell
+        self.n_states = 1
 
         # Set custom handlers for GRU/LSTM
         if self.rnn_type == 'GRU':
@@ -32,7 +32,7 @@ class RNN(nn.Module):
 
         # Set decoder initializer
         self._init_func = getattr(self, '_rnn_init_{}'.format(dec_init))
-
+        print()
         # Decoder initializer FF (for mean_ctx)
         if self.dec_init == 'mean_ctx': #for gan, dec_init is 0
             self.ff_dec_init = FF(

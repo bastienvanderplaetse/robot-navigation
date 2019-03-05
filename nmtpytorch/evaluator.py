@@ -33,7 +33,9 @@ class Evaluator:
 
         # Post-process if requested
         hyps = self.filter(hyps)
-
+        with open("current_bleu", "w+") as f:
+            for h in hyps:
+                f.write(h+"\n")
         results = []
         for key, scorer in self.scorers.items():
             results.append(

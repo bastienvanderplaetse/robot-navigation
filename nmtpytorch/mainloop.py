@@ -139,7 +139,8 @@ class MainLoop:
         out = self.net(batch, self.optim_G, self.optim_D, uctr=self.monitor.uctr, ectr=self.monitor.ectr)
         g_loss = out['loss_G']
         d_loss = out['loss_D']
-        self.loss_meter.update(g_loss, d_loss)
+        if self.monitor.uctr % 10 == 0:
+            self.loss_meter.update(g_loss, d_loss)
 
 
         return time.time() - nn_start
@@ -156,7 +157,6 @@ class MainLoop:
 
         for batch in self.train_iterator:
             batch.device(self.dev_mgr.dev)
-            self.monitor.uctr += 1
 
             try:
                 nn_sec += self.train_batch(batch)
@@ -167,6 +167,7 @@ class MainLoop:
                 else:
                     raise e
 
+            self.monitor.uctr += 1
             if self.monitor.uctr % self.disp_freq == 0:
                 # Send statistics
 

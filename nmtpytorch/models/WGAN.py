@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
+import math
+
 
 import torch
 from ..layers import Generator
@@ -7,19 +9,20 @@ from ..layers import Discriminator
 import numpy as np
 from torch.autograd import Variable
 from ..datasets import MultimodalDataset
+import torch.autograd as autograd
 from torch import nn
 from ..utils.ml_metrics import Loss
 from ..utils.device import DEVICE
 from ..utils.misc import pbar
-from ..metrics import Metric
 from ..utils.data import onehot_batch_data
+from ..metrics import Metric
 
 from .nmt import NMT
 
 logger = logging.getLogger('nmtpytorch')
 
 
-class GAN(NMT):
+class WGAN(NMT):
 
     supports_beam_search = True
 
@@ -47,11 +50,13 @@ class GAN(NMT):
 
         # Number of channels defines the spatial vector dim for us
         self.ctx_sizes = {'feats': self.opts.model['feat_dim']}
-        self.adversarial_loss = nn.BCELoss()
 
-        self.emb = nn.Embedding(self.n_trg_vocab, self.opts.model['emb_dim'],
+        self.emb_G = nn.Embedding(self.n_trg_vocab, self.opts.model['emb_dim'],
                                 padding_idx=0, max_norm=self.opts.model['emb_maxnorm'],
                                 scale_grad_by_freq=self.opts.model['emb_gradscale'])
+        self.emb_D = nn.Embedding(self.n_trg_vocab, self.opts.model['emb_dim'],
+                                        padding_idx=0, max_norm=self.opts.model['emb_maxnorm'],
+                                        scale_grad_by_freq=self.opts.model['emb_gradscale'])
 
         # Create Decoder
         self.G = Generator(
@@ -59,7 +64,7 @@ class GAN(NMT):
             hidden_size=self.opts.model['dec_dim'],
             n_vocab=self.n_trg_vocab,
             rnn_type=self.opts.model['dec_type'],
-            emb=self.emb,
+            emb=self.emb_G,
             ctx_size_dict=self.ctx_sizes,
             ctx_name='feats',
             tied_emb=self.opts.model['tied_emb'],
@@ -74,7 +79,7 @@ class GAN(NMT):
             hidden_size=self.opts.model['dec_dim'],
             n_vocab=self.n_trg_vocab,
             rnn_type=self.opts.model['dec_type'],
-            emb=self.emb,
+            emb=self.emb_G,
             ctx_size_dict=self.ctx_sizes,
             ctx_name='feats',
             tied_emb=self.opts.model['tied_emb'],
@@ -103,42 +108,104 @@ class GAN(NMT):
         feats = (batch['feats'])
         return {'feats': (feats, None)}
 
+    def compute_gradient_penalty(self, D, feature, real_samples, fake_samples):
+        Tensor = torch.cuda.FloatTensor
+        """Calculates the gradient penalty loss for WGAN GP"""
 
-    def forward(self, batch, optim_G, optim_D, train=True, **kwargs):
+        real_samples = real_samples[1:-1] #removing bos and eos
+
+        # Random weight term for interpolation between real and fake samples
+        alpha = Tensor(np.random.random((1, real_samples.size(1), 1)))
+        # Get random interpolation between real and fake samples
+        interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+        d_interpolates = D(feature, interpolates, one_hot=False)
+        fake = Variable(Tensor(real_samples.size(1), 1).fill_(1.0), requires_grad=False)
+        # Get gradient w.r.t. interpolates
+        gradients = autograd.grad(
+            outputs=d_interpolates,
+            inputs=interpolates,
+            grad_outputs=fake,
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True,
+        )[0]
+        gradients = gradients.view(gradients.size(0), -1)
+        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+        return gradient_penalty
+
+
+    def forward(self, batch, optim_G, optim_D, **kwargs):
+
         ret = {}
-        valid = Variable(torch.cuda.FloatTensor(batch.size, 1).fill_(1.0), requires_grad=False)
-        fake = Variable(torch.cuda.FloatTensor(batch.size, 1).fill_(0.0), requires_grad=False)
+        iteration = kwargs["uctr"]
+        epoch = kwargs["ectr"]
+
+        y = batch[self.tl]
+        sentence = y[1:-1]
+        bos = y[:1]
+        eos = y[-1:]
+
+        #curriculum learning
+        seq_len = sentence.size(0)
+        min_len = min(seq_len, math.ceil(epoch/10))
+
+        index = torch.LongTensor(1).random_(0, (seq_len-min_len)+1)
+        sample_sentence = y[index:index+min_len]
+        batch[self.tl] = torch.cat((bos, sample_sentence, eos), dim=0)
+
+
 
         feature = self.encode(batch)
-        # -----------------
-        #  Train Generator
-        # -----------------
-
-        if train:
-            optim_G.zero_grad()
-
-        gen_s = self.G(feature, batch[self.tl])
-        g_loss = self.adversarial_loss(self.D(feature, gen_s, one_hot=False), valid)
-
-        if train:
-            g_loss.backward()
-            optim_G.step()
+        g_loss = 0
+        d_loss = 0
 
         # ---------------------
         #  Train Discriminator
         # ---------------------
-        if train:
-            optim_D.zero_grad()
 
-        real_loss = self.adversarial_loss(self.D(feature, batch[self.tl]), valid)
-        fake_loss = self.adversarial_loss(self.D(feature, gen_s.detach(), one_hot=False), fake)
+        optim_D.zero_grad()
 
-        d_loss = (real_loss + fake_loss) / 2
 
-        if train:
-            d_loss.backward()
-            optim_D.step()
+        gen_s = self.G(feature, batch[self.tl])
 
+        real = self.D(feature, batch[self.tl])
+        fake = self.D(feature, gen_s, one_hot=False)
+
+        gradient_penalty = self.compute_gradient_penalty(self.D, feature, onehot_batch_data(batch[self.tl], self.n_trg_vocab), gen_s)
+
+        d_loss = -torch.mean(real) + torch.mean(fake) + 50 * gradient_penalty
+
+
+        d_loss.backward()
+        optim_D.step()
+
+        optim_G .zero_grad()
+
+
+        if iteration % 10 == 0:
+            # -----------------
+            #  Train Generator
+            # -----------------
+
+            gen_s = self.G(feature, batch[self.tl])
+            fake  = self.D(feature, gen_s, one_hot=False)
+            g_loss = -torch.mean(fake)
+            g_loss.backward()
+            optim_G.step()
+
+
+        ret['loss_G'] = g_loss
+        ret['loss_D'] = d_loss
+        return ret
+
+    def get_val_loss(self, batch):
+        ret = {}
+        feature = self.encode(batch)
+
+        gen_s = self.G(feature, batch[self.tl])
+        fake =  self.D(feature, gen_s, one_hot=False)
+        g_loss = -torch.mean(fake)
+        d_loss = -torch.mean(gen_s) + torch.mean(fake)
 
         ret['loss_G'] = g_loss
         ret['loss_D'] = d_loss
@@ -150,7 +217,7 @@ class GAN(NMT):
 
         for batch in pbar(data_loader, unit='batch'):
             batch.device(DEVICE)
-            out = self.forward(batch, None, None, train=False)
+            out = self.get_val_loss(batch)
             g_loss = out['loss_G']
             d_loss = out['loss_D']
             loss.update(g_loss, d_loss)
