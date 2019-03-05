@@ -2,6 +2,8 @@ import torch
 from torchvision import transforms
 from ImageEncoder import ImageEncoder
 
+import numpy as np
+
 class ImageFactory(object):
     def __init__(self, resize=None, crop=None):
 
@@ -15,6 +17,7 @@ class ImageFactory(object):
 
         self.output_size = self.cnn_encoder.get_output_shape()[1]
         self.cnn = self.cnn_encoder.get()
+        self.cnn.cuda()
 
 
         _transforms = []
@@ -29,5 +32,5 @@ class ImageFactory(object):
 
 
     def get_features(self, img):
-        img = self.transform(img)
-        return self.cnn(img.unsqueeze(0))
+        img = self.transform(img).cuda()
+        return self.cnn(img.unsqueeze(0)).cpu().data.numpy().squeeze().astype(np.float32)
