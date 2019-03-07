@@ -16,3 +16,6 @@ Language Generation with Recurrent Generative Adversarial Networks without Pre-t
 
 Intéressant a lire, piocher des idées : unsupervised image captioning : https://arxiv.org/pdf/1811.10787.pdf
 EMERGENT TRANSLATIONIN MULTI-AGENT COMMUNICATION : https://arxiv.org/pdf/1710.06922.pdf
+
+purpose of noise : https://www.reddit.com/r/MachineLearning/comments/6k4sqj/discussion_what_is_the_purpose_of_noise_in_a/
+use dropout ?
