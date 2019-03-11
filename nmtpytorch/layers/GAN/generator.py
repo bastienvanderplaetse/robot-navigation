@@ -88,13 +88,14 @@ class Generator(RNN):
         return prob, h1
 
     def forward(self, ctx_dict, y):
+
         probs = torch.zeros(
             y.shape[0], y.shape[1], self.n_vocab, device=y.device)
-
-        omask = (y != 0).long()
-        if(omask == 0).nonzero().numel():
-            import sys
-            sys.exit("non aligned input warning")
+        #
+        # omask = (y != 0).long()
+        # if(omask == 0).nonzero().numel():
+        #     import sys
+        #     sys.exit("non aligned input warning")
 
         sentence = y[1:-1]
         bos = y[:1]
@@ -102,7 +103,6 @@ class Generator(RNN):
 
         # z = Variable(torch.cuda.FloatTensor(np.random.normal(0, 1, (sentence.shape[0], sentence.shape[1],self.n_vocab))))
         z = self.z.rsample(torch.Size([sentence.shape[0], sentence.shape[1],self.n_vocab])).squeeze(-1).to(y.device)
-
         subsentence_noise = torch.matmul(z, self.emb.weight)
 
         y = torch.cat((self.emb(bos), subsentence_noise, self.emb(eos)), dim=0)

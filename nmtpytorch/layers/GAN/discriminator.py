@@ -69,6 +69,7 @@ class Discriminator(RNN):
         # Convert token indices to embeddings -> T*B*E
         if one_hot:
             y_emb = self.emb(y)
+
         else:
             y_emb = torch.matmul(y,self.emb.weight)
             bos = self.emb(torch.ones(y.shape[1], device=y.device).long()) # batch of one's
