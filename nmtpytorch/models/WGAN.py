@@ -141,17 +141,20 @@ class WGAN(NMT):
         epoch = kwargs["ectr"]
 
         y = batch[self.tl]
-        sentence = y[1:-1]
-        bos = y[:1]
-        eos = y[-1:]
 
-        #curriculum learning
-        seq_len = sentence.size(0)
-        min_len = min(seq_len, math.ceil(epoch/10))
-
-        index = torch.LongTensor(1).random_(0, (seq_len-min_len)+1)
-        sample_sentence = y[index:index+min_len]
-        batch[self.tl] = torch.cat((bos, sample_sentence, eos), dim=0)
+        #######################
+        # #curriculum learning
+        ###################
+        # sentence = y[1:-1]
+        # bos = y[:1]
+        # eos = y[-1:]
+        #
+        # seq_len = sentence.size(0)
+        # min_len = min(seq_len, math.ceil(epoch/10))
+        #
+        # index = torch.LongTensor(1).random_(0, (seq_len-min_len)+1)
+        # sample_sentence = y[index:index+min_len]
+        # batch[self.tl] = torch.cat((bos, sample_sentence, eos), dim=0)
 
 
 

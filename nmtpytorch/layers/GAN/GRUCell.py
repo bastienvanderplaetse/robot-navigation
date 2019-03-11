@@ -30,6 +30,7 @@ class GRUCell(nn.Module):
 
             i_r, i_i, i_n = gate_x.chunk(3, 1)
             h_r, h_i, h_n = gate_h.chunk(3, 1)
+
             resetgate = torch.sigmoid(i_r + h_r)
             inputgate = torch.sigmoid(i_i + h_i)
             newgate = torch.tanh(i_n + (resetgate * h_n))
