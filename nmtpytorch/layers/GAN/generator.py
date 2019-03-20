@@ -114,6 +114,6 @@ class Generator(RNN):
         h = self.f_init(ctx_dict)
         for t in range(y.shape[0]):
             prob, h = self.f_next(ctx_dict, y[t], h)
-            probs[t] = prob.data
+            probs[t] = prob
         probs = probs[1:-1]
         return probs
