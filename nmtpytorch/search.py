@@ -60,8 +60,9 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
     decs = [m.get_generator() for m in models]
     f_inits = [dec.f_init for dec in decs]
     f_nexts = [dec.f_next for dec in decs]
-    vocab = models[0].trg_vocab
+    f_probs = [dec.f_probs for dec in decs]
 
+    vocab = models[0].trg_vocab
 
     # Common parts
     encoders = [m.encode for m in models]
@@ -99,9 +100,11 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
         # Get initial decoder state (N*H)
         h_ts = [f_init(ctx_dict) for f_init, ctx_dict in zip(f_inits, ctx_dicts)]
 
+
         # we always have <bos> tokens except that the returned embeddings
         # may differ from one model to another.
         idxs = models[0].get_bos(batch.size).to(DEVICE)
+        log_ps = [f_prob(batch.size, n_vocab, idxs.device) for f_prob in f_probs]
 
         for tstep in range(max_len):
             # Select correct positions from source context
@@ -112,8 +115,9 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
             #        batch_size*beam_size x vocab_size (t > 0)
             # NOTE: get_emb does not exist in some models, fix this.
             log_ps, h_ts = zip(
-                *[f_next(cd, dec.get_emb(idxs, tstep), h_t[tile]) for
-                  f_next, dec, cd, h_t in zip(f_nexts, decs, ctx_dicts, h_ts)])
+                    *[f_next(cd, dec.get_emb(idxs, tstep), p_t[tile], h_t[tile]) for
+                  f_next, dec, cd, h_t, p_t in zip(f_nexts, decs, ctx_dicts, h_ts, log_ps)])
+
 
             # Do the actual averaging of log-probabilities
             log_p = sum(log_ps).data

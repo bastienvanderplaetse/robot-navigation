@@ -71,6 +71,7 @@ class Optimizer:
         # Filter out names for gradient clipping
         self.params = [param for (name, param) in self.named_params]
 
+
         if self.weight_decay > 0:
             weight_group = {
                 'params': [p for n, p in self.named_params if 'bias' not in n],

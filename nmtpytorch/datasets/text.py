@@ -39,7 +39,6 @@ class TextDataset(Dataset):
         # Read the sentences and map them to vocabulary
         self.data, self.lengths = read_sentences(
             self.fnames[0], self.vocab, bos=self.bos)
-
         # Dataset size
         self.size = len(self.data)
 

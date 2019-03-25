@@ -2,53 +2,27 @@ import torch
 from torch import nn
 from .. import FF
 from collections import defaultdict
-from .GRUCell import GRUCell
+from . import GRUCell
+from . import LSTMCell
 
 class RNN(nn.Module):
     def __init__(self, rnn_type, dec_init):
 
         super().__init__()
 
-        self.rnn_type = rnn_type.upper()
         self.dec_init = dec_init
 
-
-        # Safety checks
-        assert self.rnn_type in ('GRU', 'LSTM'), \
-            "rnn_type '{}' not known".format(rnn_type)
-        assert dec_init in ('zero', 'mean_ctx'), \
-            "dec_init '{}' not known".format(dec_init)
-
-        self.RNN = GRUCell
+        # self.RNN = getattr(GRUCell, '{}'.format(rnn_type))
+        self.RNN = getattr(GRUCell, '{}'.format(rnn_type))
         self.n_states = 1
 
-        # Set custom handlers for GRU/LSTM
-        if self.rnn_type == 'GRU':
-            self._rnn_unpack_states = lambda x: x
-            self._rnn_pack_states = lambda x: x
-        elif self.rnn_type == 'LSTM':
-            self._rnn_unpack_states = self._lstm_unpack_states
-            self._rnn_pack_states = self._lstm_pack_states
-
-        # Set decoder initializer
-        self._init_func = getattr(self, '_rnn_init_{}'.format(dec_init))
-        print()
-        # Decoder initializer FF (for mean_ctx)
-        if self.dec_init == 'mean_ctx': #for gan, dec_init is 0
-            self.ff_dec_init = FF(
-                self.ctx_size_dict[self.ctx_name],
-                self.hidden_size * self.n_states, activ='tanh')
-
-    def _lstm_pack_states(self, h):
-        return torch.cat(h, dim=-1)
-
-    def _lstm_unpack_states(self, h):
-        # Split h_t and c_t into two tensors and return a tuple
-        return torch.split(h, self.hidden_size, dim=-1)
 
     def _rnn_init_zero(self, ctx, ctx_mask):
-        return torch.zeros(
-            ctx.shape[1], self.hidden_size * self.n_states, device=ctx.device)
+        h = torch.zeros(
+            ctx.shape[1], self.hidden_size, device=ctx.device)
+        if self.n_states == 2:
+            return (h,h)
+        return h
 
     def _rnn_init_mean_ctx(self, ctx, ctx_mask):
         mean_ctx = ctx.mean(dim=0)
@@ -56,10 +30,15 @@ class RNN(nn.Module):
             mean_ctx = self.do(mean_ctx)
         return self.ff_dec_init(mean_ctx)
 
+    def _rnn_init_random(self, ctx, ctx_mask):
+        """Returns the initial h_0, c_0 for the decoder."""
+        return self.z.rsample(torch.Size([ctx.shape[1], self.hidden_size])).squeeze(-1).to(ctx.device)
+
     def f_init(self, ctx_dict):
         """Returns the initial h_0, c_0 for the decoder."""
         self.history = defaultdict(list)
         return self._init_func(*ctx_dict[self.ctx_name])
+
 
     def get_emb(self, idxs, tstep):
         """Returns time-step based embeddings."""
@@ -71,6 +50,9 @@ class RNN(nn.Module):
                 # Constant-zero <bos> embedding
                 return torch.zeros(
                     idxs.shape[0], self.input_size, device=idxs.device)
+            elif self.bos_type == 'random':
+                # return self.emb(self.z.rsample(torch.Size([idxs.shape[0]])).squeeze(-1).to(idxs.device))
+                return self.z.rsample(torch.Size([idxs.shape[0], self.input_size])).squeeze(-1).to(idxs.device)
             else:
                 # Feature-based <bos> computed in f_init()
                 return self.bos

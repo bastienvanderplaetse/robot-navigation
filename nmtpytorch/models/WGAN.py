@@ -32,18 +32,22 @@ class WGAN(NMT):
             'emb_maxnorm': None,        # Normalize embeddings l2 norm to 1
             'emb_gradscale': False,     # Scale embedding gradients w.r.t. batch frequency
             'dec_dim': 256,             # Decoder hidden size
-            'dec_type': 'gru',          # Decoder type (gru|lstm)
-            'dec_init': 'zero',         # How to initialize decoder (zero/mean_ctx)
+            'g_type': 'GRUCell',      # rnn type (gru|lstm)
+            'd_type': 'GRUCell',        # rnn type (gru|lstm)
+            'd_init': 'zero',         # How to initialize decoder (zero/mean_ctx)
+            'g_init': 'random',         # How to initialize decoder (zero/mean_ctx)
             'dropout': 0,               # Simple dropout
             'tied_emb': False,          # Share embeddings: (False|2way|3way)
             'bucket_by': None,          # A key like 'en' to define w.r.t which dataset
                                         # the batches will be sorted
             'direction':None,
             'feat_dim': 2048,
+            'bos_type': 'random',
         }
 
     def __init__(self, opts):
         super().__init__(opts)
+        self.batch_size = opts["train"]["batch_size"]
 
 
     def setup(self, is_train=True):
@@ -57,36 +61,46 @@ class WGAN(NMT):
         self.emb_D = nn.Embedding(self.n_trg_vocab, self.opts.model['emb_dim'],
                                         padding_idx=0, max_norm=self.opts.model['emb_maxnorm'],
                                         scale_grad_by_freq=self.opts.model['emb_gradscale'])
+        # from ..layers.GAN import GRUCell
+        #
+        # rnn = GRUCell
+        # dec0 = rnn(self.opts.model['emb_dim'], self.opts.model['dec_dim'])
+        dec0 = None
 
         # Create Decoder
         self.G = Generator(
             input_size=self.opts.model['emb_dim'],
             hidden_size=self.opts.model['dec_dim'],
             n_vocab=self.n_trg_vocab,
-            rnn_type=self.opts.model['dec_type'],
+            rnn_type=self.opts.model['g_type'],
+            rnn_type2=self.opts.model['d_type'],
             emb=self.emb_G,
+            dec0 = dec0,
             ctx_size_dict=self.ctx_sizes,
             ctx_name='feats',
             tied_emb=self.opts.model['tied_emb'],
-            dec_init=self.opts.model['dec_init'],
+            dec_init=self.opts.model['g_init'],
             dropout=self.opts.model['dropout'],
             emb_maxnorm=self.opts.model['emb_maxnorm'],
             emb_gradscale=self.opts.model['emb_gradscale'],
+            bos_type=self.opts.model['bos_type'],
         )
 
         self.D = Discriminator(
             input_size=self.opts.model['emb_dim'],
             hidden_size=self.opts.model['dec_dim'],
             n_vocab=self.n_trg_vocab,
-            rnn_type=self.opts.model['dec_type'],
-            emb=self.emb_G,
+            rnn_type=self.opts.model['d_type'],
+            emb=self.emb_D,
+            dec0=dec0,
             ctx_size_dict=self.ctx_sizes,
             ctx_name='feats',
             tied_emb=self.opts.model['tied_emb'],
-            dec_init=self.opts.model['dec_init'],
+            dec_init=self.opts.model['d_init'],
             dropout=self.opts.model['dropout'],
             emb_maxnorm=self.opts.model['emb_maxnorm'],
             emb_gradscale=self.opts.model['emb_gradscale'],
+            bos_type=self.opts.model['bos_type'],
         )
 
 
@@ -108,12 +122,10 @@ class WGAN(NMT):
         feats = (batch['feats'])
         return {'feats': (feats, None)}
 
+
     def compute_gradient_penalty(self, D, feature, real_samples, fake_samples):
         Tensor = torch.cuda.FloatTensor
         """Calculates the gradient penalty loss for WGAN GP"""
-
-        real_samples = real_samples[1:-1] #removing bos and eos
-
         # Random weight term for interpolation between real and fake samples
         alpha = Tensor(np.random.random((1, real_samples.size(1), 1)))
         # Get random interpolation between real and fake samples
@@ -134,6 +146,7 @@ class WGAN(NMT):
         return gradient_penalty
 
 
+
     def forward(self, batch, optim_G, optim_D, **kwargs):
 
         ret = {}
@@ -142,19 +155,27 @@ class WGAN(NMT):
 
         y = batch[self.tl]
 
-        #######################
-        # #curriculum learning
-        ###################
-        # sentence = y[1:-1]
-        # bos = y[:1]
-        # eos = y[-1:]
-        #
-        # seq_len = sentence.size(0)
-        # min_len = min(seq_len, math.ceil(epoch/10))
-        #
-        # index = torch.LongTensor(1).random_(0, (seq_len-min_len)+1)
-        # sample_sentence = y[index:index+min_len]
-        # batch[self.tl] = torch.cat((bos, sample_sentence, eos), dim=0)
+        ######################
+        #curriculum learning
+        #################
+        sentence = y[1:-1]
+        bos = y[:1]
+        eos = y[-1:]
+
+        seq_len = sentence.size(0)
+        min_len = min(seq_len, math.ceil(epoch/2))
+        # len = torch.LongTensor(1).random_(1, min_len+1)
+        index = 0
+        sample_sentence = sentence[index:index+min_len]
+
+        if len == seq_len:
+            sentence = torch.cat((bos, sample_sentence, eos), dim=0)
+
+        else:
+            sentence = torch.cat((bos, sample_sentence), dim=0)
+
+        sentence_G = sentence[:-1]
+        sentence_D = sentence[1:]
 
 
 
@@ -169,31 +190,31 @@ class WGAN(NMT):
         optim_D.zero_grad()
 
 
-        gen_s = self.G(feature, batch[self.tl])
+        gen_s = self.G(feature, sentence_G)
+        real =  self.D(feature, sentence_D)
+        fake =  self.D(feature, gen_s, one_hot=False)
 
-        real = self.D(feature, batch[self.tl])
-        fake = self.D(feature, gen_s, one_hot=False)
+        gradient_penalty = self.compute_gradient_penalty(self.D, feature, onehot_batch_data(sentence_D, self.n_trg_vocab), gen_s)
 
-        gradient_penalty = self.compute_gradient_penalty(self.D, feature, onehot_batch_data(batch[self.tl], self.n_trg_vocab), gen_s)
-
-        d_loss = -torch.mean(real) + torch.mean(fake) + 50 * gradient_penalty
-
+        d_loss = -torch.mean(real) + torch.mean(fake) + 10 * gradient_penalty
 
         d_loss.backward()
         optim_D.step()
 
-        optim_G .zero_grad()
 
+        optim_G.zero_grad()
 
-        if iteration % 10 == 0:
+        if iteration % 5 == 0:
             # -----------------
             #  Train Generator
             # -----------------
 
-            gen_s = self.G(feature, batch[self.tl])
+            gen_s = self.G(feature, sentence_G)
             fake  = self.D(feature, gen_s, one_hot=False)
             g_loss = -torch.mean(fake)
+
             g_loss.backward()
+
             optim_G.step()
 
 

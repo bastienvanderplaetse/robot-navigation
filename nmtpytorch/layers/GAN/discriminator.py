@@ -11,7 +11,7 @@ from .rnn import RNN
 class Discriminator(RNN):
     """A decoder which implements Show-attend-and-tell decoder."""
     def __init__(self, input_size, hidden_size, ctx_size_dict, ctx_name, n_vocab,
-                 rnn_type, emb, tied_emb=False, dec_init='zero', dropout=0,
+                 rnn_type, emb, dec0, tied_emb=False, dec_init='zero', dropout=0,
                  emb_maxnorm=None, emb_gradscale=False,
                  bos_type='emb'):
 
@@ -29,19 +29,23 @@ class Discriminator(RNN):
         self.ctx_size_dict = ctx_size_dict
         self.bos_type = bos_type
 
+        self._init_func = getattr(self, '_rnn_init_{}'.format(dec_init))
+
+
         # Create target embeddings
         self.emb = emb
 
         # Create decoder from [y_t, z_t] to dec_dim
+        # self.dec0 = dec0
         self.dec0 = self.RNN(self.input_size, self.hidden_size)
-        # self.dec1 = self.RNN(self.hidden_size, self.hidden_size)
+        self.dec1 = self.RNN(self.hidden_size, self.hidden_size)
 
         #attention
-        # self.att = FF(self.ctx_size_dict[self.ctx_name], self.hidden_size, activ="tanh")
+        self.att = FF(self.ctx_size_dict[self.ctx_name], self.hidden_size, activ="tanh")
 
         # Final softmax (classif)
-        # self.out2prob_classif = FF(self.hidden_size, 1, activ="sigmoid")
-        self.out2prob_classif = FF(self.hidden_size, 1)
+        self.out2prob_classif = FF(self.hidden_size, 1, activ="sigmoid")
+        # self.out2prob_classif = FF(self.hidden_size, 1)
 
         # Dropout
         if self.dropout > 0:
@@ -53,38 +57,39 @@ class Discriminator(RNN):
         # if self.dropout > 0:
         #     y = self.do(y)
 
+
         h1_c1 = self.dec0(y, h)
 
         h1 = get_rnn_hidden_state(h1_c1)
 
-        # h1_ct = torch.mul(h1,self.att(ctx_dict[self.ctx_name][0]))
+        ct = self.att(ctx_dict[self.ctx_name][0]).squeeze(0)
+        #
+        h1_ct = torch.mul(h1,ct)
+        #
+        o = self.dec1(h1_ct, h1_c1)
 
-        # h2_c2 = self.dec1(h1_ct.squeeze(0), h1_c1)
 
-
-        return h1
+        return o, o
 
     def forward(self, ctx_dict, y, one_hot=True):
 
         # Convert token indices to embeddings -> T*B*E
         if one_hot:
             y_emb = self.emb(y)
-
         else:
             y_emb = torch.matmul(y,self.emb.weight)
-            bos = self.emb(torch.ones(y.shape[1], device=y.device).long()) # batch of one's
-            eos = self.emb(torch.ones(y.shape[1], device=y.device).long()*2) #batch of two's
-            y_emb = torch.cat((bos.unsqueeze(0) ,y_emb, eos.unsqueeze(0)), dim=0)
 
         # Get initial hidden state
         h = self.f_init(ctx_dict)
 
+
+
         # -1: So that we skip the timestep where input is <eos>
-        for t in range(y_emb.shape[0]-1):
-            h = self.f_next(ctx_dict, y_emb[t], h)
+        for t in range(y_emb.shape[0]):
+            o,h = self.f_next(ctx_dict, y_emb[t], h)
         # if self.dropout > 0:
         #     h = self.do(h)
-        valid = self.out2prob_classif(h)
+        valid = self.out2prob_classif(o)
 
         #accuracy
         # max_vals, max_indices = torch.max(log_c, 1)

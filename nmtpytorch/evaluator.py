@@ -33,7 +33,7 @@ class Evaluator:
 
         # Post-process if requested
         hyps = self.filter(hyps)
-        with open("current_bleu", "w+") as f:
+        with open("output", "w+") as f:
             for h in hyps:
                 f.write(h+"\n")
         results = []
