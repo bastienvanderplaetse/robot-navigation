@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import time
 import logging
+import os
+import json
 
 import torch
 
@@ -14,11 +16,15 @@ from .utils.data import make_dataloader
 from .utils.tensorboard import TensorBoard
 from .search import beam_search
 
+from os import listdir
+from os.path import exists, isfile, join
+
 logger = logging.getLogger('nmtpytorch')
 
 
 class MainLoop:
     def __init__(self, model, train_opts, dev_mgr):
+        torch.cuda.init()
         # Get all training options into this mainloop
         self.__dict__.update(train_opts)
 
@@ -29,6 +35,16 @@ class MainLoop:
         self.oom_count = 0
         self.loss_meter = Loss()
         self._found_optim_state = None
+
+        # Log scores
+        self.log_score = train_opts['log_score']
+        self.log_dir_name = "scoresevaluation"
+        if not os.path.exists(self.log_dir_name) or not os.path.isdir(self.log_dir_name):
+            os.mkdir(self.log_dir_name)
+        self.criteria = train_opts[train_opts['criteria']]
+        filename = "{0}_{1}.json".format(train_opts['log_score_file'], self.criteria)
+        print(filename)
+        self.log_score_file = join(self.log_dir_name, filename)
 
         # Load training and validation data & create iterators
         self.print('Loading dataset(s)')
@@ -94,7 +110,7 @@ class MainLoop:
         self.model = self.model.to(self.dev_mgr.dev)
 
         if self.dev_mgr.req_cpu or len(self.dev_mgr.cuda_dev_ids) == 1:
-            self.net = self.model
+            self.net = self.model.cuda()
         else:
             self.net = torch.nn.DataParallel(
                 self.model, device_ids=self.dev_mgr.cuda_dev_ids, dim=1)
@@ -134,13 +150,19 @@ class MainLoop:
     def train_batch(self, batch):
         """Trains a batch."""
         nn_start = time.time()
+        start = nn_start
 
         # Forward pass with training progress
         out = self.net(batch, self.optim_G, self.optim_D, uctr=self.monitor.uctr, ectr=self.monitor.ectr)
+        end = time.time()
+        # print("FORWARD : {0}".format(end-start))
         g_loss = out['loss_G']
         d_loss = out['loss_D']
+        start = time.time()
         if self.monitor.uctr % 10 == 0:
             self.loss_meter.update(g_loss, d_loss)
+            end = time.time()
+            # print("UPDATE : {0}".format(end-start))
 
 
         return time.time() - nn_start
@@ -148,7 +170,7 @@ class MainLoop:
     def train_epoch(self):
         """Trains a full epoch."""
         self.print('Starting Epoch {}'.format(self.monitor.ectr))
-
+        start = time.time()
         nn_sec = 0.0
         eval_sec = 0.0
         total_sec = time.time()
@@ -168,17 +190,16 @@ class MainLoop:
                     raise e
 
             self.monitor.uctr += 1
-            if self.monitor.uctr % self.disp_freq == 0:
-                # Send statistics
-
-                msg = "Epoch {} - update {:10d} => loss G: {:>7.3f}, loss D: {:>7.3f}".format(
-                    self.monitor.ectr, self.monitor.uctr,
-                    self.loss_meter.batch_loss_G, self.loss_meter.batch_loss_D)
-                for key, value in self.net.aux_loss.items():
-                    val = value.item()
-                    msg += ' [{}: {:.3f}]'.format(key, val)
-                msg += ' (#OOM: {})'.format(self.oom_count)
-                self.print(msg)
+            # if self.monitor.uctr % self.disp_freq == 0:
+            #     # Send statistics
+            #     msg = "Epoch {} - update {:10d} => loss G: {:>7.3f}, loss D: {:>7.3f}".format(
+            #         self.monitor.ectr, self.monitor.uctr,
+            #         self.loss_meter.batch_loss_G, self.loss_meter.batch_loss_D)
+            #     for key, value in self.net.aux_loss.items():
+            #         val = value.item()
+            #         msg += ' [{}: {:.3f}]'.format(key, val)
+            #     msg += ' (#OOM: {})'.format(self.oom_count)
+            #     self.print(msg)
 
             # Do validation?
             if (not self.epoch_valid and
@@ -234,6 +255,13 @@ class MainLoop:
             self.print("Max epochs {} reached.".format(self.max_epochs))
             return False
 
+        end = time.time()
+        print("End epoch Time : {0}".format(end-start))
+
+        print('Memory Usage:')
+        print('Allocated:', round(torch.cuda.memory_allocated(0)/1024**3,1), 'GB')
+        print('Cached:   ', round(torch.cuda.memory_cached(0)/1024**3,1), 'GB')
+
         self.monitor.ectr += 1
         return True
 
@@ -287,6 +315,22 @@ class MainLoop:
         self.net.train(True)
         torch.set_grad_enabled(True)
 
+    def load_json_scores(self):
+        if exists(self.log_score_file) and isfile(self.log_score_file):
+            with open(self.log_score_file, 'r') as f:
+                return json.load(f)
+        else:
+            return dict()
+
+    def save_json_scores(self, scores):
+        with open(self.log_score_file, 'w') as fp:
+            json.dump(scores, fp)
+
+    def score_evaluation(self, scores):
+        d = self.load_json_scores()
+        d[self.criteria] = [score.score for score in scores]
+        self.save_json_scores(d)
+
     def __call__(self):
         """Runs training loop."""
         self.print('Training started on %s' % time.strftime('%d-%m-%Y %H:%M:%S'))
@@ -306,5 +350,12 @@ class MainLoop:
             # No validation done, save final model
             self.print('Saving final model.')
             self.monitor.save_model(suffix='final')
+
+        print("==============================")
+        print(self.monitor.val_scores['BLEU'])
+        print("==============================")
+
+        if self.log_score:
+            self.score_evaluation(self.monitor.val_scores['BLEU'])
 
         self.print('Training finished on %s' % time.strftime('%d-%m-%Y %H:%M'))
