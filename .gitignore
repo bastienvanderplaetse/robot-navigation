@@ -102,3 +102,11 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+
+# Project
+bison
+coco
+images
+data/*
+out/*

@@ -50,6 +50,9 @@ TRAIN_DEFAULTS = {
     'pretrained_file': '',       # A .ckpt file from which layers will be initialized
     'freeze_layers': '',         # comma sep. list of layer prefixes to freeze
     'handle_oom': False,         # Skip out-of-memory batches
+    'log_score': False,          # Logged score evolution by epoch
+    'log_score_file': 'default', # File name to log score evolution by epoch
+    'criteria': 'lr',            # The parameter that will evolve for testparams script
 }
 
 
