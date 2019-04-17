@@ -110,3 +110,5 @@ coco
 images
 data/*
 out/*
+
+.vscode/
