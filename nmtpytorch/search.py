@@ -5,6 +5,8 @@ from .utils.misc import pbar
 from .utils.topology import Topology
 from .utils.device import DEVICE
 
+import sys
+
 
 def tile_ctx_dict(ctx_dict, idxs):
     """Returns dict of 3D tensors repeatedly indexed along the sample axis."""
@@ -76,8 +78,12 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
     mask = torch.arange(max_batch_size * k, device=DEVICE)
     nll_storage = torch.zeros(max_batch_size, device=DEVICE)
 
+    ccc = -1
     for batch in pbar(data_loader, unit='batch'):
+        ccc = ccc + 1
+        # print("===========================================")
         batch.device(DEVICE)
+        # print(batch['feats'])
 
         # Always use the initial storage
         beam = beam_storage.narrow(1, 0, batch.size).zero_()
@@ -109,6 +115,17 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
         for tstep in range(max_len):
             # Select correct positions from source context
             ctx_dicts = [tile_ctx_dict(cd, tile) for cd in ctx_dicts]
+
+            # print("aaa ==================================")
+            # aaa = [(f_next, dec, cd, h_t, p_t) for f_next, dec, cd, h_t, p_t in zip(f_nexts, decs, ctx_dicts, h_ts, log_ps)]
+            # bbb = aaa[0][2]['feats'][0].cpu().numpy()
+            # print(aaa[0][2]['feats'][0])
+            # print(bbb[0][0])
+            # print(len(bbb[0][0]))
+            # len(bbb) => 1
+            # len(bbb[0]) => batch size
+            # len(bbb[0][0]) => 2048
+            # print("===================================")
 
             # Get log probabilities and next state
             # log_p: batch_size x vocab_size (t = 0)
@@ -170,17 +187,43 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
         # Apply length normalization
         nll.div_(len_penalty)
 
+        ###TEMP
+        tbeam = None
+        hyps = None
+        ### END TEMP
+        print("=============================================")
         if n_best:
             # each elem is sample, then candidate
             tbeam = beam.permute(1, 2, 0).to('cpu').tolist()
             scores = nll.to('cpu').tolist()
             results.extend(
                 [(vocab.list_of_idxs_to_sents(b), s) for b, s in zip(tbeam, scores)])
+            # print("tbeam")
+            # print(tbeam)
         else:
             # Get best-1 hypotheses
+            # print("top hyps")
             top_hyps = nll.topk(1, sorted=False, largest=True)[1].squeeze(1)
+            # print(top_hyps)
             hyps = beam[:, range(batch.size), top_hyps].t().to('cpu')
             results.extend(vocab.list_of_idxs_to_sents(hyps.tolist()))
+        # print("+++")
+        # print(beam)
+        # print("+++")
+        print(ccc)
+        # print(hyps[0])
+        # ctx_dicts[0]['feats'][0] => taille 1
+        # ctx_dicts[0]['feats'][0][0] => taille 32 (batch size)
+        # ctx_dicts[0]['feats'][0][0][0] => taille 2048
+        print(ctx_dicts[0]['feats'][0][0])
+        print(len(ctx_dicts[0]['feats'][0][0]))
+        print(len(ctx_dicts[0]['feats'][0][0][0]))
+        # print(hyps[1])
+        # print(ctx_dicts[1])
+        # print("+++")
+        # print(results)
+        print("=============================================")
+        # sys.exit(0)
 
     # Recover order of the samples if necessary
     if getattr(data_loader.batch_sampler, 'store_indices', False):

@@ -3,6 +3,7 @@ import time
 import logging
 import os
 import json
+import sys
 
 import torch
 
@@ -151,7 +152,11 @@ class MainLoop:
         """Trains a batch."""
         nn_start = time.time()
         start = nn_start
-
+        # self.print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+        # self.print(batch)
+        # self.print(batch['label'])
+        # self.print(batch['en'])
+        # self.print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
         # Forward pass with training progress
         out = self.net(batch, self.optim_G, self.optim_D, uctr=self.monitor.uctr, ectr=self.monitor.ectr)
         end = time.time()
@@ -178,6 +183,9 @@ class MainLoop:
         self.oom_count = 0
 
         for batch in self.train_iterator:
+            print("BAAAATCH")
+            print(batch['feats'])
+            print("END BAAAATCH")
             batch.device(self.dev_mgr.dev)
 
             try:
@@ -289,11 +297,14 @@ class MainLoop:
                                task_id=task,
                                beam_size=self.eval_beam,
                                max_len=self.eval_max_len)
+            print("HYPS---------------- {0}".format(hyps))
+            # sys.exit(0)
             beam_time = time.time() - beam_time
 
             # Compute metrics and update results
             score_time = time.time()
             results.extend(self.evaluator.score(hyps))
+            # results contains Loss and Bleu scores
             score_time = time.time() - score_time
 
             self.print("Beam Search: {:.2f} sec, Scoring: {:.2f} sec "

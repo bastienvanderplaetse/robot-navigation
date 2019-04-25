@@ -60,18 +60,45 @@ class Generator(RNN):
 
     def f_next(self, ctx_dict, y, prob, h):
         """Applies one timestep of recurrence."""
-        #
+        
+        current_batch_size = len(y)
+        ones = torch.ones(current_batch_size)
         if self.dropout > 0:
-            y = self.do(y)
+            ones = self.do(ones)
+            # y = self.do(y)
+
+        dropped_y = torch.zeros_like(y, device=y.device)
+        for i in range(current_batch_size):
+            if ones[i] == 0.0:
+                dropped_y[i] = y[i] - y[i]
+            else:
+                dropped_y[i] = y[i]
 
         # y_ct = torch.cat([ct,y],dim=1)
         # Get hidden states from the first decoder (purely cond. on LM)
         # h1_c1 = self.dec0(y, prob, h)
-        h1_c1 = self.dec0(y, h)
+        h1_c1 = self.dec0(dropped_y, h)
 
         h1 = get_rnn_hidden_state(h1_c1)
 
+        print("INSIDE F NEXT")
+        # print(ctx_dict[self.ctx_name][0]) ###########
+        # print(len(ctx_dict[self.ctx_name][0]))
+        # print(len(ctx_dict[self.ctx_name][0][0]))
+        # print("+++++")
+        # ct = self.att(ctx_dict[self.ctx_name][0])
+        # print(ct)
+        # print(len(ct))
+        # print(len(ct[0]))
+        # ct = torch.squeeze(ct, 0)
+        # ct = self.att(ctx_dict[self.ctx_name][0]).squeeze(0)
+        # print(ct)
+        # print(len(ct))
+        # print("+++++")
         ct = self.att(ctx_dict[self.ctx_name][0]).squeeze(0)
+        # print(ct)
+        # print(len(ct))
+        print("END INSIDE")
         h1_ct = torch.mul(h1,ct)
 
         # Run second decoder (h1 is compatible now as it was returned by GRU)
@@ -98,7 +125,8 @@ class Generator(RNN):
             batch_size, n_vocab, device=device)
 
     def forward(self, ctx_dict, y):
-
+        # ctx_dict : images
+        # y : sentences
 
         omask = (y != 0).long()
         if(omask == 0).nonzero().numel():
@@ -132,7 +160,15 @@ class Generator(RNN):
         # z = self.z.rsample(torch.Size([y.shape[0], y.shape[1],self.n_vocab])).squeeze(-1).to(y.device)
         # y = torch.matmul(z, self.emb.weight)
 
+        # print("Y  : {0}".format(y))
+        print(y)
+        print(y.shape)
         y = self.emb(y)
+        print("POST EMB : {0}".format(y))
+        print(y.shape)
+        print(ctx_dict[self.ctx_name][0].shape)
+        import sys
+        # sys.exit(0)
 
         # Get initial hidden state
         h = self.f_init(ctx_dict)
@@ -150,5 +186,5 @@ class Generator(RNN):
         for t in range(y.shape[0]):
             prob, h = self.f_next(ctx_dict, y[t], prob, h)
             probs[t] = prob
-
+            
         return probs

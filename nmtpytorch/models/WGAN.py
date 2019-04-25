@@ -152,21 +152,30 @@ class WGAN(NMT):
         ret = {}
         iteration = kwargs["uctr"]
         epoch = kwargs["ectr"]
-
         y = batch[self.tl]
+        # print("Y - IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+        # print(batch['en'])
+        # print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
 
         ######################
         #curriculum learning
         #################
         sentence = y[1:-1]
+        print("SENTENCE - IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+        print(sentence)
+        print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+
         bos = y[:1]
         eos = y[-1:]
 
         seq_len = sentence.size(0)
-        min_len = min(seq_len, math.ceil(epoch/2))
+        # print(seq_len)
+        # min_len = min(seq_len, math.ceil(epoch/2))
+        min_len = seq_len
         # len = torch.LongTensor(1).random_(1, min_len+1)
         index = 0
         sample_sentence = sentence[index:index+min_len]
+        # print(sample_sentence)
 
         if len == seq_len:
             sentence = torch.cat((bos, sample_sentence, eos), dim=0)
@@ -174,8 +183,11 @@ class WGAN(NMT):
         else:
             sentence = torch.cat((bos, sample_sentence), dim=0)
 
+        # print("Sentence : {0}".format(sentence))
         sentence_G = sentence[:-1]
+        print("Sentence G : {0}".format(sentence_G))
         sentence_D = sentence[1:]
+        # print("Sentence D : {0}".format(sentence_D))
 
 
 
@@ -191,7 +203,11 @@ class WGAN(NMT):
 
 
         gen_s = self.G(feature, sentence_G)
+        # print("GEN_S : {0}".format(gen_s.size(0))) # number of words in each sentence
+        # print("GEN_S : {0}".format(gen_s[0].size(0))) # size of batch, ie number of sentences
+        # print("GEN_S : {0}".format(gen_s[0][0].size(0))) # proba that the word is chosen
         real =  self.D(feature, sentence_D)
+        # print("REAL : {0}".format(real))
         fake =  self.D(feature, gen_s, one_hot=False)
 
         gradient_penalty = self.compute_gradient_penalty(self.D, feature, onehot_batch_data(sentence_D, self.n_trg_vocab), gen_s)
