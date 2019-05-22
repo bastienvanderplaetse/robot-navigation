@@ -110,5 +110,6 @@ coco
 images
 data/*
 out/*
+remake/*
 
 .vscode/
