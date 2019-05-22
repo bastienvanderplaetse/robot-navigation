@@ -120,7 +120,7 @@ def run(args):
     configurations = get_config_files(args.FOLDER)
     bound = len(configurations)//2
     config = configurations[bound:]
-    # print(config)
+    print(config)
     run_training(config)
     # scores = load_scores(join("scoresevaluation/", args.PARAMETER+'.json'))
     # scores_values, labels, x_values = prepare_scores(scores, args.PARAMETER)

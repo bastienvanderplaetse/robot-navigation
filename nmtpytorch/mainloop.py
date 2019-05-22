@@ -42,7 +42,13 @@ class MainLoop:
         self.log_dir_name = "scoresevaluation"
         if not os.path.exists(self.log_dir_name) or not os.path.isdir(self.log_dir_name):
             os.mkdir(self.log_dir_name)
+        
         self.criteria = train_opts[train_opts['criteria']]
+        
+        subfolder = "{0}_{1}".format(train_opts['log_score_file'], self.criteria)
+        if not os.path.exists(join(self.log_dir_name, subfolder)) or not os.path.isdir(join(self.log_dir_name, subfolder)):
+            os.mkdir(join(self.log_dir_name, subfolder))
+        
         filename = "{0}_{1}.json".format(train_opts['log_score_file'], self.criteria)
         print(filename)
         self.log_score_file = join(self.log_dir_name, filename)
@@ -68,11 +74,11 @@ class MainLoop:
 
             if self.monitor.beam_metrics is not None:
                 self.beam_iterator = make_dataloader(
-                    self.model.load_data('val', self.eval_batch_size, mode='beam'))
+                    self.model.load_data('val', self.eval_batch_size, mode='eval')) # mode is set to eval instead of beam to add sentences in beam search
                 # Create hypothesis evaluator
                 self.evaluator = Evaluator(
                     self.model.val_refs, self.monitor.beam_metrics,
-                    filters=self.eval_filters)
+                    filters=self.eval_filters, folder=self.log_dir_name+"/"+subfolder)
 
         # Setup model
         self.model.setup()
@@ -183,9 +189,9 @@ class MainLoop:
         self.oom_count = 0
 
         for batch in self.train_iterator:
-            print("BAAAATCH")
-            print(batch['feats'])
-            print("END BAAAATCH")
+            # print("BAAAATCH")
+            # print(batch['feats'])
+            # print("END BAAAATCH")
             batch.device(self.dev_mgr.dev)
 
             try:
@@ -297,7 +303,7 @@ class MainLoop:
                                task_id=task,
                                beam_size=self.eval_beam,
                                max_len=self.eval_max_len)
-            print("HYPS---------------- {0}".format(hyps))
+            # print("HYPS---------------- {0}".format(hyps))
             # sys.exit(0)
             beam_time = time.time() - beam_time
 

@@ -16,6 +16,8 @@ from ..utils.device import DEVICE
 from ..utils.misc import pbar
 from ..utils.data import onehot_batch_data
 from ..metrics import Metric
+from ..metrics import BLEUScorer
+from ..search import beam_search
 
 from .nmt import NMT
 
@@ -103,6 +105,8 @@ class WGAN(NMT):
             bos_type=self.opts.model['bos_type'],
         )
 
+        self.scorer = BLEUScorer()
+
 
 
     def load_data(self, split, batch_size, mode='train'):
@@ -113,7 +117,7 @@ class WGAN(NMT):
             vocabs=self.vocabs, topology=self.topology,
             bucket_by=self.opts.model['bucket_by'],
             max_len=self.opts.model.get('max_len', None),
-            warmup=(split != 'train'),
+            warmup=(split != 'train')
         )
         logger.info(dataset)
         return dataset
@@ -160,16 +164,21 @@ class WGAN(NMT):
         ######################
         #curriculum learning
         #################
+        # print(y)
+        # print("========")
         sentence = y[1:-1]
-        print("SENTENCE - IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
-        print(sentence)
-        print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+        # print(sentence)
+        # print("========")
+        # print("SENTENCE - IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+        # print(sentence)
+        # print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
 
         bos = y[:1]
         eos = y[-1:]
 
         seq_len = sentence.size(0)
         # print(seq_len)
+        # print("=======")
         # min_len = min(seq_len, math.ceil(epoch/2))
         min_len = seq_len
         # len = torch.LongTensor(1).random_(1, min_len+1)
@@ -185,11 +194,16 @@ class WGAN(NMT):
 
         # print("Sentence : {0}".format(sentence))
         sentence_G = sentence[:-1]
-        print("Sentence G : {0}".format(sentence_G))
+        # print("Sentence G : {0}".format(sentence_G))
         sentence_D = sentence[1:]
         # print("Sentence D : {0}".format(sentence_D))
 
 
+        # print(batch)
+        # print(batch['label'])
+        # print(batch['en'])
+        #import sys
+        #sys.exit(0)
 
         feature = self.encode(batch)
         g_loss = 0
@@ -241,10 +255,26 @@ class WGAN(NMT):
     def get_val_loss(self, batch):
         ret = {}
         feature = self.encode(batch)
-
+        # print(batch)
+        # print(batch['feats'])
+        # print(batch['en'])
+        # print(batch['label'])
+        # print(self.tl)
+        # print("============================")
         gen_s = self.G(feature, batch[self.tl])
+        # print("============================")
+        # print(gen_s)
+        # print(batch[self.tl].shape)
+        # print(gen_s.shape)
+        # import sys
+        # sys.exit(0)
         fake =  self.D(feature, gen_s, one_hot=False)
+        # print(gen_s)
+        # print(fake)
         g_loss = -torch.mean(fake)
+        # print(g_loss)
+        # import sys
+        # sys.exit(0)
         d_loss = -torch.mean(gen_s) + torch.mean(fake)
 
         ret['loss_G'] = g_loss

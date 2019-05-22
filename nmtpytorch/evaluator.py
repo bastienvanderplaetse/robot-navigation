@@ -7,11 +7,13 @@ from .utils.misc import get_language
 
 
 class Evaluator:
-    def __init__(self, refs, beam_metrics, filters=''):
+    def __init__(self, refs, beam_metrics, filters='', folder=None):
         # metrics: list of upper-case beam-search metrics
         self.kwargs = {}
         self.scorers = OrderedDict()
         self.refs = list([refs])
+        self.epoch_count = 1
+        self.folder_name = folder
         self.language = get_language(self.refs[0])
         if self.language is None:
             # Fallback to en (this is only relevant for METEOR)
@@ -33,11 +35,13 @@ class Evaluator:
 
         # Post-process if requested
         hyps = self.filter(hyps)
-        with open("output", "w+") as f:
+        filename = "{0}/output_{1}".format(self.folder_name, self.epoch_count)
+        with open(filename, "w+") as f:
             for h in hyps:
                 f.write(h+"\n")
         results = []
         for key, scorer in self.scorers.items():
             results.append(
-                scorer.compute(self.refs, hyps, **self.kwargs[key]))
+                scorer.compute(self.refs, hyps, filename=filename, **self.kwargs[key]))
+        self.epoch_count = self.epoch_count + 1
         return results

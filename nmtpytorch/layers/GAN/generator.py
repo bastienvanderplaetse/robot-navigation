@@ -81,7 +81,7 @@ class Generator(RNN):
 
         h1 = get_rnn_hidden_state(h1_c1)
 
-        print("INSIDE F NEXT")
+        # print("INSIDE F NEXT")
         # print(ctx_dict[self.ctx_name][0]) ###########
         # print(len(ctx_dict[self.ctx_name][0]))
         # print(len(ctx_dict[self.ctx_name][0][0]))
@@ -98,7 +98,7 @@ class Generator(RNN):
         ct = self.att(ctx_dict[self.ctx_name][0]).squeeze(0)
         # print(ct)
         # print(len(ct))
-        print("END INSIDE")
+        # print("END INSIDE")
         h1_ct = torch.mul(h1,ct)
 
         # Run second decoder (h1 is compatible now as it was returned by GRU)
@@ -161,13 +161,14 @@ class Generator(RNN):
         # y = torch.matmul(z, self.emb.weight)
 
         # print("Y  : {0}".format(y))
-        print(y)
-        print(y.shape)
+        # print(y)
+        # print(y.shape)
+        # print(y)
         y = self.emb(y)
-        print("POST EMB : {0}".format(y))
-        print(y.shape)
-        print(ctx_dict[self.ctx_name][0].shape)
-        import sys
+        # print("POST EMB : {0}".format(y))
+        # print(y.shape)
+        # print(ctx_dict[self.ctx_name][0].shape)
+        # import sys
         # sys.exit(0)
 
         # Get initial hidden state
@@ -183,6 +184,16 @@ class Generator(RNN):
 
         prob = self.f_probs(y.shape[1], self.n_vocab, y.device)
 
+        # print(y.shape[0])
+        # print(y.shape)
+        # print("=====")
+        # for i in range(y.shape[1]):
+        #     print(y[-1][i])
+        # print("=====")
+        # print(y.shape)
+        # if y.shape[0] == 49:
+        #     import sys
+        #     sys.exit(0)
         for t in range(y.shape[0]):
             prob, h = self.f_next(ctx_dict, y[t], prob, h)
             probs[t] = prob

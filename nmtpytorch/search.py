@@ -48,7 +48,7 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
         list:
             A list of hypotheses in surface form.
     """
-
+    dico = dict()
     # This is the batch-size requested by the user but with sorted
     # batches, efficient batch-size will be <= max_batch_size
     max_batch_size = data_loader.batch_sampler.batch_size
@@ -79,7 +79,16 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
     nll_storage = torch.zeros(max_batch_size, device=DEVICE)
 
     ccc = -1
+    # print(data_loader)
     for batch in pbar(data_loader, unit='batch'):
+        # print(batch)
+        if (batch['en'].shape[0] not in dico):
+            dico[batch['en'].shape[0]] = 0
+        dico[batch['en'].shape[0]] = dico[batch['en'].shape[0]] + batch.size
+        # print(batch['feats'])
+        # print(batch['en'].shape)
+        # print(batch['en'].shape[0])
+        true_len = batch['en'].shape[0]
         ccc = ccc + 1
         # print("===========================================")
         batch.device(DEVICE)
@@ -112,20 +121,29 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
         idxs = models[0].get_bos(batch.size).to(DEVICE)
         log_ps = [f_prob(batch.size, n_vocab, idxs.device) for f_prob in f_probs]
 
+        # print("==============")
+        # print(batch['feats'].shape)
         for tstep in range(max_len):
             # Select correct positions from source context
             ctx_dicts = [tile_ctx_dict(cd, tile) for cd in ctx_dicts]
 
             # print("aaa ==================================")
-            # aaa = [(f_next, dec, cd, h_t, p_t) for f_next, dec, cd, h_t, p_t in zip(f_nexts, decs, ctx_dicts, h_ts, log_ps)]
-            # bbb = aaa[0][2]['feats'][0].cpu().numpy()
+            aaa = [(f_next, dec, cd, h_t, p_t) for f_next, dec, cd, h_t, p_t in zip(f_nexts, decs, ctx_dicts, h_ts, log_ps)]
+            bbb = aaa[0][2]['feats'][0].cpu().numpy()
             # print(aaa[0][2]['feats'][0])
             # print(bbb[0][0])
+            # print(len(bbb))
+            # print(len(bbb[0]))
             # print(len(bbb[0][0]))
             # len(bbb) => 1
             # len(bbb[0]) => batch size
             # len(bbb[0][0]) => 2048
             # print("===================================")
+            # if tstep == max_len-1:
+            #     print(tstep)
+            #     print(len(bbb[0]))
+                # import sys
+                # sys.exit(0)
 
             # Get log probabilities and next state
             # log_p: batch_size x vocab_size (t = 0)
@@ -134,10 +152,29 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
             log_ps, h_ts = zip(
                     *[f_next(cd, dec.get_emb(idxs, tstep), p_t[tile], h_t[tile]) for
                   f_next, dec, cd, h_t, p_t in zip(f_nexts, decs, ctx_dicts, h_ts, log_ps)])
+            # print(log_ps[0].shape)
+            # print(h_ts[0].shape)
+
+            # import sys
+            # sys.exit(0)
 
 
             # Do the actual averaging of log-probabilities
             log_p = sum(log_ps).data
+            # print(log_ps)
+            # print(sum(log_ps))
+            # print(log_p)
+            # print(log_ps[0].shape)
+            # print(log_p.shape)
+            # print(eos)
+            # print(log_p)
+            if tstep == true_len - 2:
+                log_p[:,eos] = 1000#log_p[:,eos]  0.5
+            # print(log_p)
+            # print(log_p[0][4003])
+
+            # import sys
+            # sys.exit(0)
 
             if suppress_unk:
                 log_p[:, unk] = inf
@@ -185,13 +222,18 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
             len_penalty = ((5 + len_penalty)**lp_alpha) / 6**lp_alpha
 
         # Apply length normalization
+        # print(len_penalty)
+        # print(nll)
         nll.div_(len_penalty)
+        # print(nll)
+        # import sys
+        # sys.exit(0)
 
         ###TEMP
         tbeam = None
         hyps = None
         ### END TEMP
-        print("=============================================")
+        # print("=============================================")
         if n_best:
             # each elem is sample, then candidate
             tbeam = beam.permute(1, 2, 0).to('cpu').tolist()
@@ -204,29 +246,42 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
             # Get best-1 hypotheses
             # print("top hyps")
             top_hyps = nll.topk(1, sorted=False, largest=True)[1].squeeze(1)
+            # print("====================")
+            # print(nll)
+            # print(nll.topk(1, sorted=False, largest=True))
             # print(top_hyps)
             hyps = beam[:, range(batch.size), top_hyps].t().to('cpu')
+            # print(beam)
+            # print(hyps)
             results.extend(vocab.list_of_idxs_to_sents(hyps.tolist()))
+            # print(vocab.list_of_idxs_to_sents(hyps.tolist()))
+            # print("========================")
         # print("+++")
         # print(beam)
         # print("+++")
-        print(ccc)
+        # print(ccc)
         # print(hyps[0])
         # ctx_dicts[0]['feats'][0] => taille 1
         # ctx_dicts[0]['feats'][0][0] => taille 32 (batch size)
         # ctx_dicts[0]['feats'][0][0][0] => taille 2048
-        print(ctx_dicts[0]['feats'][0][0])
-        print(len(ctx_dicts[0]['feats'][0][0]))
-        print(len(ctx_dicts[0]['feats'][0][0][0]))
+        # print(ctx_dicts[0]['feats'][0][0])
+        # print(len(ctx_dicts[0]['feats'][0][0]))
+        # print(len(ctx_dicts[0]['feats'][0][0][0]))
         # print(hyps[1])
         # print(ctx_dicts[1])
         # print("+++")
         # print(results)
-        print("=============================================")
+        # print("=============================================")
         # sys.exit(0)
 
     # Recover order of the samples if necessary
     if getattr(data_loader.batch_sampler, 'store_indices', False):
         results = [results[i] for i, j in sorted(
             enumerate(data_loader.batch_sampler.orig_idxs), key=lambda k: k[1])]
+    # print("=================================================")
+    # print(results)
+    # print("++++++++++++++++++++++++++++")
+    # print(dico)
+    # import sys
+    # sys.exit(0)
     return results

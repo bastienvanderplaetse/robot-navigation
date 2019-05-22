@@ -18,7 +18,6 @@ class Bleu:
         self.ref_for_image = {}
 
     def compute_score(self, gts, res):
-
         bleu_scorer = BleuScorer(n=self._n)
         for id in sorted(gts.keys()):
             hypo = res[id]
