@@ -128,8 +128,20 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
             ctx_dicts = [tile_ctx_dict(cd, tile) for cd in ctx_dicts]
 
             # print("aaa ==================================")
-            aaa = [(f_next, dec, cd, h_t, p_t) for f_next, dec, cd, h_t, p_t in zip(f_nexts, decs, ctx_dicts, h_ts, log_ps)]
-            bbb = aaa[0][2]['feats'][0].cpu().numpy()
+            # aaa = [(f_next, dec, cd, h_t, p_t) for f_next, dec, cd, h_t, p_t in zip(f_nexts, decs, ctx_dicts, h_ts, log_ps)]
+            # print("========================")
+            # print(aaa)
+            # print("+++++++++++++++++++++++")
+            # print(aaa[0])
+            # print("+++++++++++++++++++++++")
+            # print(aaa[0][2])
+            # print("+++++++++++++++++++++++")
+            # print(aaa[0][2]['feats'])
+            # print("+++++++++++++++++++++++")
+            # print(aaa[0][2]['feats'][0])
+            # print("+++++++++++++++++++++++")
+            # bbb = (aaa[0][2]['feats'][0].data).cpu().numpy()
+            # bbb = aaa[0][2]['feats'][0].cpu().numpy()
             # print(aaa[0][2]['feats'][0])
             # print(bbb[0][0])
             # print(len(bbb))
@@ -210,6 +222,12 @@ def beam_search(models, data_loader, task_id=None, beam_size=12, max_len=200,
 
             if tstep > 0:
                 # Permute all hypothesis history according to new order
+                # print(beam)
+                # print(tstep)
+                # print(beam.shape)
+                # print(max_len)
+                # print(batch['en'].shape)
+                # print("============")
                 beam[:tstep] = beam[:tstep].gather(2, pdxs.repeat(tstep, 1, 1))
 
         # Put an explicit <eos> to make idxs_to_sent happy

@@ -65,8 +65,13 @@ def run_training(configurations):
         subprocess.call(["python", "bin/nmtpy", "train", "-C", "{0}".format(config), "-d", "gpu"], shell=True)
 
 def load_scores(filename):
-    with open(filename, 'r') as f:
-        return json.load(f)
+    scores = dict()
+    for file in filename:
+        with open(file, 'r') as f:
+            data = json.load(f)
+            for key, value in data.items():
+                scores[key] = value
+    return scores
 
 def prepare_scores(scores, parameter):
     labels = []
@@ -85,7 +90,7 @@ def prepare_scores(scores, parameter):
 
     return scores_values, labels, x_values
 
-def plot_lines(x_values, lines, labels, filename, label_x, label_y, has_legend=True, step=2):
+def plot_lines(x_values, lines, labels, filename, label_x, label_y, has_legend=True, step=10):
     fig, ax = plt.subplots()
 
     for index, line in enumerate(lines):
@@ -105,6 +110,16 @@ def plot_lines(x_values, lines, labels, filename, label_x, label_y, has_legend=T
     plt.close(fig)
     plt.clf()
 
+def get_score_files():
+    files = None
+    folder = "scoresevaluation"
+    if not exists(folder):
+        print("Folder does not exist ({0})".format(folder))
+    else:
+        files = [join(folder, f) for f in listdir(folder) if isfile(join(folder, f))]
+        files = [f for f in files if len(f.split(".")) > 1 and f.split(".")[-1] == "json"]
+    return files
+
 
 
 """ EXECUTION """
@@ -117,14 +132,16 @@ def run(args):
     args : ArgumentParser
         The arguments of the commande typed by the user
     """
-    configurations = get_config_files(args.FOLDER)
-    bound = len(configurations)//2
-    config = configurations[bound:]
-    print(config)
-    run_training(config)
-    # scores = load_scores(join("scoresevaluation/", args.PARAMETER+'.json'))
-    # scores_values, labels, x_values = prepare_scores(scores, args.PARAMETER)
-    # plot_lines(x_values, scores_values, labels, args.PARAMETER+'.png', "Epoch", "Blue metric")
+    # configurations = get_config_files(args.FOLDER)
+    # bound = len(configurations)//2
+    # config = configurations[:]
+    # print(config)
+    # run_training(config)
+
+    scores_file = get_score_files()
+    scores = load_scores(scores_file)
+    scores_values, labels, x_values = prepare_scores(scores, args.PARAMETER)
+    plot_lines(x_values, scores_values, labels, args.PARAMETER+'.png', "Epoch", "Blue metric")
 
 
 if __name__ == "__main__":
